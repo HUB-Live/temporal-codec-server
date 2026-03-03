@@ -35,7 +35,7 @@ function tryDecodeBase64Url(value: string): Buffer | null {
   }
   const normalized = value.replace(/=+$/, '');
   let padded = normalized.replace(/-/g, '+').replace(/_/g, '/');
-  padded += '=' * ((4 - (padded.length % 4)) % 4);
+  padded += '='.repeat((4 - (padded.length % 4)) % 4);
   const decoded = Buffer.from(padded, 'base64');
   if (!isValidAesKeyLength(decoded.length)) {
     return null;
