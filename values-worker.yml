@@ -1,0 +1,80 @@
+server:
+  replicaCount: 1
+  image:
+    repository: temporalio/server
+    tag: "1.29.3"
+
+  config:
+    persistence:
+      defaultStore: default
+      visibilityStore: visibility
+      numHistoryShards: 512
+      datastores:
+        default:
+          sql:
+            createDatabase: false
+            manageSchema: false
+            pluginName: postgres12
+            driverName: postgres12
+            databaseName: temporal_sandbox
+            connectAddr: "db-mybrain-v2.cujeoqj3n1m4.us-east-1.rds.amazonaws.com:5432"
+            connectProtocol: tcp
+            user: temporal_user
+            existingSecret: temporal-db-secret
+            secretKey: password
+            maxConns: 20
+            maxIdleConns: 20
+            maxConnLifetime: "1h"
+            tls:
+              enabled: true
+              enableHostVerification: false
+              serverName: "db-mybrain-v2.cujeoqj3n1m4.us-east-1.rds.amazonaws.com"
+
+        visibility:
+          sql:
+            createDatabase: false
+            manageSchema: false
+            pluginName: postgres12
+            driverName: postgres12
+            databaseName: temporal_visibility_sandbox
+            connectAddr: "db-mybrain-v2.cujeoqj3n1m4.us-east-1.rds.amazonaws.com:5432"
+            connectProtocol: tcp
+            user: temporal_user
+            existingSecret: temporal-db-secret
+            secretKey: password
+            maxConns: 20
+            maxIdleConns: 20
+            maxConnLifetime: "1h"
+            tls:
+              enabled: true
+              enableHostVerification: false
+              serverName: "db-mybrain-v2.cujeoqj3n1m4.us-east-1.rds.amazonaws.com"
+
+web:
+  enabled: true
+  image:
+    repository: temporalio/ui
+    tag: "2.47.2"
+  additionalEnv:
+    - name: TEMPORAL_CODEC_ENDPOINT
+      value: "https://temporal-codec.hub.live"
+    - name: TEMPORAL_CODEC_PASS_ACCESS_TOKEN
+      value: "false"
+    - name: TEMPORAL_CODEC_INCLUDE_CREDENTIALS
+      value: "false"
+
+admintools:
+  enabled: false
+
+cassandra:
+  enabled: false
+
+elasticsearch:
+  enabled: false
+  external: false
+
+prometheus:
+  enabled: false
+
+grafana:
+  enabled: false

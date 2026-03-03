@@ -29,6 +29,28 @@ function tryDecodeBase64(value: string): Buffer | null {
   return decoded;
 }
 
+function tryDecodeBase64Url(value: string): Buffer | null {
+  if (!/^[A-Za-z0-9\-_]+$/.test(value)) {
+    return null;
+  }
+  const normalized = value.replace(/=+$/, '');
+  let padded = normalized.replace(/-/g, '+').replace(/_/g, '/');
+  padded += '=' * ((4 - (padded.length % 4)) % 4);
+  const decoded = Buffer.from(padded, 'base64');
+  if (!isValidAesKeyLength(decoded.length)) {
+    return null;
+  }
+  const reencoded = decoded
+    .toString('base64')
+    .replace(/=+$/, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  if (normalized !== reencoded) {
+    return null;
+  }
+  return decoded;
+}
+
 function resolveEncryptionKey(): Buffer {
   const raw = process.env.ENCRYPTION_KEY?.trim();
   if (!raw) {
@@ -53,8 +75,13 @@ function resolveEncryptionKey(): Buffer {
     return decoded;
   }
 
+  const decodedUrl = tryDecodeBase64Url(raw);
+  if (decodedUrl) {
+    return decodedUrl;
+  }
+
   throw new Error(
-    `ENCRYPTION_KEY must be 16, 24, or 32 bytes (raw) or a valid base64 string for those lengths. Got ${direct.length} bytes.`
+    `ENCRYPTION_KEY must be 16, 24, or 32 bytes (raw) or a valid base64/base64url string for those lengths. Got ${direct.length} bytes.`
   );
 }
 
