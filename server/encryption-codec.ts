@@ -30,10 +30,10 @@ function tryDecodeBase64(value: string): Buffer | null {
 }
 
 function tryDecodeBase64Url(value: string): Buffer | null {
-  if (!/^[A-Za-z0-9\-_]+$/.test(value)) {
+  const normalized = value.replace(/=+$/, '');
+  if (!/^[A-Za-z0-9\-_]+$/.test(normalized)) {
     return null;
   }
-  const normalized = value.replace(/=+$/, '');
   let padded = normalized.replace(/-/g, '+').replace(/_/g, '/');
   padded += '='.repeat((4 - (padded.length % 4)) % 4);
   const decoded = Buffer.from(padded, 'base64');
@@ -113,7 +113,24 @@ export class EncryptionCodec implements PayloadCodec {
   async decode(payloads: Payload[]): Promise<Payload[]> {
     return Promise.all(
       payloads.map(async (payload) => {
-        if (!payload.metadata || decode(payload.metadata[METADATA_ENCODING_KEY]) !== ENCODING) {
+        if (!payload.metadata) {
+          return payload;
+        }
+
+        const encodingBytes = payload.metadata[METADATA_ENCODING_KEY];
+        if (!encodingBytes) {
+          return payload;
+        }
+
+        let encoding: string;
+        try {
+          encoding = decode(encodingBytes);
+        } catch (error) {
+          console.warn('Invalid encoding metadata; skipping decode.', error);
+          return payload;
+        }
+
+        if (encoding !== ENCODING) {
           return payload;
         }
         if (!payload.data) {

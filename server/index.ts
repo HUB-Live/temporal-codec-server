@@ -103,6 +103,17 @@ function getKey(header: JwtHeader, callback: (err: Error | null, key?: string | 
     });
 }
 
+function verifyAccessToken(token: string): Promise<jwt.JwtPayload | string> {
+    return new Promise((resolve, reject) => {
+        jwt.verify(token, getKey, { algorithms: ['RS256'] }, (err, decoded) => {
+            if (err) {
+                return reject(err);
+            }
+            resolve(decoded as jwt.JwtPayload | string);
+        });
+    });
+}
+
 /**
  * Helper function to convert a valid proto JSON to a payload object.
  *
@@ -165,16 +176,14 @@ async function main() {
 
             // verify the signature on this access token (in your authorization header) against the JWKS endpoint
             const token = authHeader.split(' ')[1];
-            jwt.verify(token, getKey, { algorithms: ['RS256'] }, (err, decoded) => {
-                if (err) {
-                    console.error('Failed to verify token:', err);
-                    return res.status(403).end('Invalid token');
-                }
-
-                console.log('Decoded JWT:', decoded);  // This will print the payload of the JWT
-
+            try {
+                const decoded = await verifyAccessToken(token);
+                console.log('Decoded JWT:', decoded); // This will print the payload of the JWT
                 // Here you can use the claims in `decoded` to identify the user and authorize their request.
-            });
+            } catch (err) {
+                console.error('Failed to verify token:', err);
+                return res.status(403).end('Invalid token');
+            }
         }
 
         try {
