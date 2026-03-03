@@ -1,5 +1,5 @@
     pipeline {
-        agent {label 'graviton'}
+        agent {label 'docker'}
         // environment {
         //     AWS_DEFAULT_REGION = 'us-east-1'
         // }
