@@ -20,7 +20,6 @@
                                         echo "getting files from jenkins"
                                         echo develop > environment.txt
                                         cat environment.txt
-                                        cat .env
                                     '''
                             }
                         } else if (env.BRANCH_NAME == 'main') {
