@@ -95,10 +95,10 @@ export class EncryptionCodec implements PayloadCodec {
 
         const keyIdBytes = payload.metadata[METADATA_ENCRYPTION_KEY_ID];
         if (!keyIdBytes) {
-          throw new ValueError('Unable to decrypt Payload without encryption key id');
+          console.warn('Missing encryption key id metadata; falling back to default key id.');
         }
 
-        const keyId = decode(keyIdBytes);
+        const keyId = keyIdBytes ? decode(keyIdBytes) : this.defaultKeyId;
         let key = this.keys.get(keyId);
         if (!key) {
           key = await fetchKey(keyId);
