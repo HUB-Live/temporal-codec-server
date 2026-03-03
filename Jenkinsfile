@@ -101,9 +101,9 @@
                             sh '''
                                 export AWS_DEFAULT_REGION=us-east-1
                                 aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name cluster-hublive-develop
-                                kubectl apply -f yaml/deployments/server-deployment.yaml
-                                kubectl apply -f yaml/services/server-service.yaml
-                                kubectl apply -f yaml/ingress/server-ingress.yaml
+                                kubectl apply -f yaml/sa-demo/deployments/server-deployment.yaml
+                                kubectl apply -f yaml/sa-demo/services/server-service.yaml
+                                kubectl apply -f yaml/sa-demo/ingress/server-ingress.yaml
                                 echo "Image published $CI_IMAGE_COMPLETE"
                                 '''
                         }
@@ -115,9 +115,9 @@
                             sh '''
                                 export AWS_DEFAULT_REGION=sa-east-1
                                 aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name cluster-hublive-production
-                                kubectl apply -f yaml/deployments/server-deployment-prd.yaml
-                                kubectl apply -f yaml/services/server-service-prd.yaml
-                                kubectl apply -f yaml/ingress/server-ingress-prd.yaml
+                                kubectl apply -f yaml/sa-demo/deployments/server-deployment-prd.yaml
+                                kubectl apply -f yaml/sa-demo/services/server-service-prd.yaml
+                                kubectl apply -f yaml/sa-demo/ingress/server-ingress-prd.yaml
                                 echo "Image published $CI_IMAGE_COMPLETE"
                                 '''
                             }
