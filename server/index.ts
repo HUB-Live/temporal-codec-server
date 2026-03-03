@@ -92,6 +92,7 @@ const corsOrigin = buildCorsOrigin(process.env.CORS_ALLOW_ORIGINS);
 const corsAllowedHeaders = parseCsv(process.env.CORS_ALLOW_HEADERS) ?? DEFAULT_CORS_HEADERS;
 const corsAllowedMethods = parseCsv(process.env.CORS_ALLOW_METHODS) ?? DEFAULT_CORS_METHODS;
 const encryptionKeyId = process.env.ENCRYPTION_KEY_ID || DEFAULT_ENCRYPTION_KEY_ID;
+const requireAuth = !['false', '0', 'no', 'off'].includes((process.env.REQUIRE_AUTH || 'true').toLowerCase());
 
 const client = jwksClient({ jwksUri });
 
@@ -156,23 +157,25 @@ async function main() {
         const printToken = authHeader ? authHeader.split(' ')[1] : undefined;
         console.log(`Authorization token: ${printToken}`);
 
-        // if auth header doesn't exist or doesn't start with 'Bearer ' then reject
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).end('Unauthorized');
-        }
-
-        // verify the signature on this access token (in your authorization header) against the JWKS endpoint
-        const token = authHeader.split(' ')[1];
-        jwt.verify(token, getKey, { algorithms: ['RS256'] }, (err, decoded) => {
-            if (err) {
-                console.error('Failed to verify token:', err);
-                return res.status(403).end('Invalid token');
+        if (requireAuth) {
+            // if auth header doesn't exist or doesn't start with 'Bearer ' then reject
+            if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                return res.status(401).end('Unauthorized');
             }
 
-            console.log('Decoded JWT:', decoded);  // This will print the payload of the JWT
+            // verify the signature on this access token (in your authorization header) against the JWKS endpoint
+            const token = authHeader.split(' ')[1];
+            jwt.verify(token, getKey, { algorithms: ['RS256'] }, (err, decoded) => {
+                if (err) {
+                    console.error('Failed to verify token:', err);
+                    return res.status(403).end('Invalid token');
+                }
 
-            // Here you can use the claims in `decoded` to identify the user and authorize their request.
-        });
+                console.log('Decoded JWT:', decoded);  // This will print the payload of the JWT
+
+                // Here you can use the claims in `decoded` to identify the user and authorize their request.
+            });
+        }
 
         try {
             const { payloads: raw } = req.body as Body;

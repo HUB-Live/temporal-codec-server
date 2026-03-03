@@ -35,7 +35,9 @@ spec:
                 secretKeyRef:
                   key: ENCRYPTION_KEY
                   name: temporal-codec-secret
-          image: steveandroulakis/temporal-codec-server:latest
+            - name: REQUIRE_AUTH
+              value: 'false'
+          image: 093126182733.dkr.ecr.us-east-1.amazonaws.com/temporal-codec-server:develop-0.1.0
           imagePullPolicy: Always
           name: codec
           ports:
