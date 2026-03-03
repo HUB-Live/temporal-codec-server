@@ -7,6 +7,56 @@ import { decrypt, encrypt } from './crypto';
 
 const ENCODING = 'binary/encrypted';
 const METADATA_ENCRYPTION_KEY_ID = 'encryption-key-id';
+const DEFAULT_ENCRYPTION_KEY = 'sa-rocks!sa-rocks!sa-rocks!yeah!';
+
+function isValidAesKeyLength(length: number): boolean {
+  return length === 16 || length === 24 || length === 32;
+}
+
+function tryDecodeBase64(value: string): Buffer | null {
+  if (!/^[A-Za-z0-9+/=]+$/.test(value) || value.length % 4 !== 0) {
+    return null;
+  }
+  const decoded = Buffer.from(value, 'base64');
+  if (!isValidAesKeyLength(decoded.length)) {
+    return null;
+  }
+  const normalized = value.replace(/=+$/, '');
+  const reencoded = decoded.toString('base64').replace(/=+$/, '');
+  if (normalized !== reencoded) {
+    return null;
+  }
+  return decoded;
+}
+
+function resolveEncryptionKey(): Buffer {
+  const raw = process.env.ENCRYPTION_KEY?.trim();
+  if (!raw) {
+    return Buffer.from(DEFAULT_ENCRYPTION_KEY, 'utf8');
+  }
+
+  if (raw.startsWith('base64:')) {
+    const decoded = Buffer.from(raw.slice('base64:'.length), 'base64');
+    if (!isValidAesKeyLength(decoded.length)) {
+      throw new Error(`ENCRYPTION_KEY base64 payload must be 16, 24, or 32 bytes; got ${decoded.length}.`);
+    }
+    return decoded;
+  }
+
+  const direct = Buffer.from(raw, 'utf8');
+  if (isValidAesKeyLength(direct.length)) {
+    return direct;
+  }
+
+  const decoded = tryDecodeBase64(raw);
+  if (decoded) {
+    return decoded;
+  }
+
+  throw new Error(
+    `ENCRYPTION_KEY must be 16, 24, or 32 bytes (raw) or a valid base64 string for those lengths. Got ${direct.length} bytes.`
+  );
+}
 
 export class EncryptionCodec implements PayloadCodec {
   constructor(protected readonly keys: Map<string, crypto.CryptoKey>, protected readonly defaultKeyId: string) {}
@@ -85,7 +135,7 @@ export class EncryptionCodec implements PayloadCodec {
 async function fetchKey(_keyId: string): Promise<crypto.CryptoKey> {
   // In production, fetch key from a key management system (KMS). You may want to memoize requests if you'll be decoding
   // Payloads that were encrypted using keys other than defaultKeyId.
-  const key = Buffer.from('sa-rocks!sa-rocks!sa-rocks!yeah!');
+  const key = resolveEncryptionKey();
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
     key,
