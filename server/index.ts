@@ -35,6 +35,7 @@ const DEFAULT_CORS_ORIGIN = 'https://cloud.temporal.io';
 const DEFAULT_CORS_HEADERS = ['x-namespace', 'content-type', 'authorization'];
 const DEFAULT_CORS_METHODS = ['POST', 'OPTIONS', 'GET'];
 const DEFAULT_ENCRYPTION_KEY_ID = 'c2EtZGVtby1rZXk=';
+const DEFAULT_ENCRYPTION_ALGORITHM = 'aes-gcm';
 
 function parseCsv(value?: string): string[] | undefined {
     if (!value) {
@@ -84,6 +85,14 @@ function buildCorsOrigin(raw?: string): cors.CorsOptions['origin'] {
     };
 }
 
+function resolveEncryptionAlgorithm(value?: string): 'aes-gcm' | 'fernet' {
+    const normalized = (value ?? DEFAULT_ENCRYPTION_ALGORITHM).toLowerCase();
+    if (normalized === 'aes-gcm' || normalized === 'fernet') {
+        return normalized;
+    }
+    throw new Error(`Unsupported ENCRYPTION_ALGORITHM: ${value}`);
+}
+
 const port = Number.parseInt(process.env.PORT ?? '', 10);
 const listenPort = Number.isFinite(port) ? port : 3000;
 
@@ -92,6 +101,7 @@ const corsOrigin = buildCorsOrigin(process.env.CORS_ALLOW_ORIGINS);
 const corsAllowedHeaders = parseCsv(process.env.CORS_ALLOW_HEADERS) ?? DEFAULT_CORS_HEADERS;
 const corsAllowedMethods = parseCsv(process.env.CORS_ALLOW_METHODS) ?? DEFAULT_CORS_METHODS;
 const encryptionKeyId = process.env.ENCRYPTION_KEY_ID || DEFAULT_ENCRYPTION_KEY_ID;
+const encryptionAlgorithm = resolveEncryptionAlgorithm(process.env.ENCRYPTION_ALGORITHM);
 const requireAuth = !['false', '0', 'no', 'off'].includes((process.env.REQUIRE_AUTH || 'true').toLowerCase());
 
 const client = jwksClient({ jwksUri });
@@ -146,7 +156,7 @@ function toJSON({ metadata, data }: proto.temporal.api.common.v1.IPayload): JSON
 
 async function main() {
 
-    const codec = await EncryptionCodec.create(encryptionKeyId);
+    const codec = await EncryptionCodec.create(encryptionKeyId, encryptionAlgorithm);
 
     const app = express();
     app.use(cors({
