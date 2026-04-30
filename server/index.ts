@@ -13,17 +13,6 @@ import jwksClient, { RsaSigningKey, SigningKey } from "jwks-rsa";
 
 type Payload = proto.temporal.api.common.v1.IPayload;
 
-const client = jwksClient({
-    jwksUri: 'https://prod-tmprl.us.auth0.com/.well-known/jwks.json',
-});
-
-// get JWT signing key
-function getKey(header: JwtHeader, callback: (err: Error | null, key?: string | Buffer) => void): void {
-    client.getSigningKey(header.kid as string, (err: Error | null, key?: SigningKey) => {
-        callback(err, key?.getPublicKey());
-    });
-}
-
 interface JSONPayload {
     metadata?: Record<string, string> | null;
     data?: string | null;
@@ -41,7 +30,99 @@ config({ path });
 
 console.log(process.env.NODE_ENV);
 
-const port = process.env.PORT || 3000;
+const DEFAULT_JWKS_URI = 'https://prod-tmprl.us.auth0.com/.well-known/jwks.json';
+const DEFAULT_CORS_ORIGIN = 'https://cloud.temporal.io';
+const DEFAULT_CORS_HEADERS = ['x-namespace', 'content-type', 'authorization'];
+const DEFAULT_CORS_METHODS = ['POST', 'OPTIONS', 'GET'];
+const DEFAULT_ENCRYPTION_KEY_ID = 'c2EtZGVtby1rZXk=';
+const DEFAULT_ENCRYPTION_ALGORITHM = 'aes-gcm';
+
+function parseCsv(value?: string): string[] | undefined {
+    if (!value) {
+        return undefined;
+    }
+    const parts = value
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+    return parts.length > 0 ? parts : undefined;
+}
+
+function wildcardToRegex(pattern: string): RegExp {
+    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+    const regex = `^${escaped.replace(/\*/g, '.*')}$`;
+    return new RegExp(regex, 'i');
+}
+
+function buildCorsOrigin(raw?: string): cors.CorsOptions['origin'] {
+    if (!raw || raw.trim() === '') {
+        return DEFAULT_CORS_ORIGIN;
+    }
+
+    const normalized = raw.trim();
+    const lower = normalized.toLowerCase();
+    if (lower === '*' || lower === 'true' || lower === 'all' || lower === 'any') {
+        return true;
+    }
+
+    const origins = parseCsv(normalized) ?? [];
+    if (origins.length === 0) {
+        return DEFAULT_CORS_ORIGIN;
+    }
+
+    const hasWildcard = origins.some((origin) => origin.includes('*'));
+    if (!hasWildcard) {
+        return origins.length === 1 ? origins[0] : origins;
+    }
+
+    const patterns = origins.map((origin) => wildcardToRegex(origin));
+    return (origin, callback) => {
+        if (!origin) {
+            return callback(null, true);
+        }
+        const allowed = patterns.some((pattern) => pattern.test(origin));
+        return callback(null, allowed);
+    };
+}
+
+function resolveEncryptionAlgorithm(value?: string): 'aes-gcm' | 'fernet' {
+    const normalized = (value ?? DEFAULT_ENCRYPTION_ALGORITHM).toLowerCase();
+    if (normalized === 'aes-gcm' || normalized === 'fernet') {
+        return normalized;
+    }
+    throw new Error(`Unsupported ENCRYPTION_ALGORITHM: ${value}`);
+}
+
+const port = Number.parseInt(process.env.PORT ?? '', 10);
+const listenPort = Number.isFinite(port) ? port : 3000;
+
+const jwksUri = process.env.JWKS_URI || DEFAULT_JWKS_URI;
+const corsOrigin = buildCorsOrigin(process.env.CORS_ALLOW_ORIGINS);
+const corsAllowedHeaders = parseCsv(process.env.CORS_ALLOW_HEADERS) ?? DEFAULT_CORS_HEADERS;
+const corsAllowedMethods = parseCsv(process.env.CORS_ALLOW_METHODS) ?? DEFAULT_CORS_METHODS;
+const encryptionKeyId = process.env.ENCRYPTION_KEY_ID || DEFAULT_ENCRYPTION_KEY_ID;
+const encryptionAlgorithm = resolveEncryptionAlgorithm(process.env.ENCRYPTION_ALGORITHM);
+const requireAuth = !['false', '0', 'no', 'off'].includes((process.env.REQUIRE_AUTH || 'true').toLowerCase());
+
+const client = jwksClient({ jwksUri });
+
+// get JWT signing key
+function getKey(header: JwtHeader, callback: (err: Error | null, key?: string | Buffer) => void): void {
+    client.getSigningKey(header.kid as string, (err: Error | null, key?: SigningKey) => {
+        callback(err, key?.getPublicKey());
+    });
+}
+
+function verifyAccessToken(token: string): Promise<jwt.JwtPayload | string> {
+    return new Promise((resolve, reject) => {
+        jwt.verify(token, getKey, { algorithms: ['RS256'] }, (err, decoded) => {
+            if (err) {
+                return reject(err);
+            }
+            resolve(decoded as jwt.JwtPayload | string);
+        });
+    });
+}
 
 /**
  * Helper function to convert a valid proto JSON to a payload object.
@@ -75,13 +156,14 @@ function toJSON({ metadata, data }: proto.temporal.api.common.v1.IPayload): JSON
 
 async function main() {
 
-    const codec = await EncryptionCodec.create('c2EtZGVtby1rZXk=');
+    const codec = await EncryptionCodec.create(encryptionKeyId, encryptionAlgorithm);
 
     const app = express();
     app.use(cors({
-        origin: 'https://cloud.temporal.io',  // Or true to allow any origin
-        allowedHeaders: ['x-namespace', 'content-type', 'authorization'], // Added 'authorization'
-        credentials: true  // This is the important line
+        origin: corsOrigin, // Or true to allow any origin
+        allowedHeaders: corsAllowedHeaders, // Added 'authorization'
+        methods: corsAllowedMethods,
+        credentials: true // This is the important line
     }));
     app.use(express.json());
 
@@ -96,23 +178,23 @@ async function main() {
         const printToken = authHeader ? authHeader.split(' ')[1] : undefined;
         console.log(`Authorization token: ${printToken}`);
 
-        // if auth header doesn't exist or doesn't start with 'Bearer ' then reject
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).end('Unauthorized');
-        }
+        if (requireAuth) {
+            // if auth header doesn't exist or doesn't start with 'Bearer ' then reject
+            if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                return res.status(401).end('Unauthorized');
+            }
 
-        // verify the signature on this access token (in your authorization header) against the JWKS endpoint
-        const token = authHeader.split(' ')[1];
-        jwt.verify(token, getKey, { algorithms: ['RS256'] }, (err, decoded) => {
-            if (err) {
+            // verify the signature on this access token (in your authorization header) against the JWKS endpoint
+            const token = authHeader.split(' ')[1];
+            try {
+                const decoded = await verifyAccessToken(token);
+                console.log('Decoded JWT:', decoded); // This will print the payload of the JWT
+                // Here you can use the claims in `decoded` to identify the user and authorize their request.
+            } catch (err) {
                 console.error('Failed to verify token:', err);
                 return res.status(403).end('Invalid token');
             }
-
-            console.log('Decoded JWT:', decoded);  // This will print the payload of the JWT
-
-            // Here you can use the claims in `decoded` to identify the user and authorize their request.
-        });
+        }
 
         try {
             const { payloads: raw } = req.body as Body;
@@ -144,8 +226,8 @@ async function main() {
     });
 
     await new Promise<void>((resolve, reject) => {
-        app.listen(port, () => {
-            console.log(`Codec Server listening at http://localhost:${port}`);
+        app.listen(listenPort, () => {
+            console.log(`Codec Server listening at http://localhost:${listenPort}`);
         });
         app.on('error', reject);
     });
