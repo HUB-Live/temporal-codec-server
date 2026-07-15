@@ -1,1 +1,7 @@
-**/.env.development
+.git
+.env
+.env.*
+.netrc
+node_modules
+npm-debug.log*
+Dockerfile*
