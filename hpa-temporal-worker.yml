@@ -1,0 +1,23 @@
+# HPA for the Temporal worker service (dev cluster, temporal-sandbox). The chart has no HPA
+# template, so it is applied separately: kubectl apply -f hpa-temporal-worker.yml
+# minReplicas matches server.worker.replicaCount in values-worker.yml, so a helm upgrade
+# only ever resets the deployment to the HPA floor.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: temporal-worker
+  namespace: temporal-sandbox
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: temporal-worker
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
