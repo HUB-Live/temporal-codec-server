@@ -4,6 +4,34 @@ server:
     repository: temporalio/server
     tag: "1.29.3"
 
+  worker:
+    replicaCount: 2  # floor of hpa-temporal-worker.yml
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 1Gi
+
+  # Task queue priority for document-extraction (MYBRAIN-3296). Keep namespace in every
+  # constraint: develop, homolog and sandbox share this server.
+  dynamicConfig:
+    matching.useNewMatcher:
+      - value: true
+        constraints:
+          namespace: develop
+          taskQueueName: document-extraction
+    matching.numTaskqueueWritePartitions:
+      - value: 1
+        constraints:
+          namespace: develop
+          taskQueueName: document-extraction
+    matching.numTaskqueueReadPartitions:
+      - value: 1
+        constraints:
+          namespace: develop
+          taskQueueName: document-extraction
+
   config:
     persistence:
       defaultStore: default
